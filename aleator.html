@@ -1,0 +1,550 @@
+<html>
+<head>
+	<title>Solar System</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+	<link rel="shortcut icon" type="image/x-icon" href="http://www.matthewmorrone.com/psi.ico" />
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-alpha1/jquery.min.js"></script>
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.11.4/jquery-ui.min.js"></script>
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery-color/2.1.2/jquery.color.min.js"></script>
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/3.10.1/lodash.min.js"></script>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css" />
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.0.0-alpha/css/bootstrap.min.css" />
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.0/css/font-awesome.min.css" />
+	<link rel="stylesheet" href="https://code.jquery.com/ui/jquery-ui-git.css" />
+	<script>
+		let log = console.log.bind(console)
+	</script>
+	<style>
+	::-webkit-scrollbar {
+		display: none;
+	}
+	* {
+		margin: 0px;
+		padding: 0px;
+	}
+	body {
+		width: 100%;
+		height: 100%;
+	}
+	table, th, td {
+		border: 1px solid black;
+		border-collapse: collapse;
+	}
+	input {
+		margin: -250px;
+	}
+	input, label {
+		position: fixed;
+		float: left;
+		margin: 5px;
+	}
+	#controls {
+		background-color: rgba(255, 255, 255, 0.5);
+		position: fixed;
+		top: 50px;
+		left: 50px;
+		width: 700px;
+		height: 200px;
+	}
+	.number {
+		text-align: right;
+	}
+	*:focus {
+		outline: none;
+	}
+	.pressed {
+		background-color: darkgrey;
+	}
+</style>
+</head>
+<body>
+	<div id='controls'>
+		<button id='try'>Try</button>
+		<button id='pause'>Play</button>
+		<button id='reset'>Reset</button>
+		<button id='front'>0°</button>
+		<button id='top'>90°</button>
+		<table>
+			<tr>
+				<th colspan=14>Camera</th>
+			</tr>
+			<tr>
+				<td>Position</td>
+				<td>x</td><td id=cameraPositionX></td>
+				<td>y</td><td id=cameraPositionY></td>
+				<td>z</td><td id=cameraPositionZ></td>
+				<td>Rotation</td>
+				<td>x</td><td id=cameraRotationX></td>
+				<td>y</td><td id=cameraRotationY></td>
+				<td>z</td><td id=cameraRotationZ></td>
+			</tr>
+		</table>
+		<table>
+			<tr>
+				<th colspan=19>Controls</th>
+			</tr>
+			<tr>
+				<td>Coordinates</td>
+				<td>φ</td><td id=phi></td>
+				<td>θ</td><td id=theta></td>
+				<td>Position</td>
+				<td>x</td><td id=controlsPositionX></td>
+				<td>y</td><td id=controlsPositionY></td>
+				<td>z</td><td id=controlsPositionZ></td>
+				<td>Rotation</td>
+				<td>x</td><td id=controlsRotationX></td>
+				<td>y</td><td id=controlsRotationY></td>
+				<td>z</td><td id=controlsRotationZ></td>
+			</tr>
+		</table>
+		<table id='planets'></table>
+	</div>
+	<script src="three.min.js"></script>
+	<script src="three.orbit.js"></script>
+	<script src="three.sprites.js"></script>
+	<script src="three.tween.js"></script>
+	<!-- <script src="three.trackball.js"></script> -->
+
+	<script>
+
+/*
+Make the sun brighter without losing the planets' shadows
+elliptical orbits, inclined orbits, planetary axial tilt
+moons, rings, lagrangian dynamics, orbit sharing, n-ary star systems
+procedurally generated planetary texture
+star distance affects planet type
+*/
+
+
+
+solarSystem = {}
+
+let π = Math.PI
+let G = 6.67384e-11; // m3 kg-1 s-2
+let STEPS_PER_FRAME = 10000;
+let METERS_PER_UNIT = 1000000000;
+let SEC_PER_STEP = 1;
+
+function degrees(angle) {
+	return angle *(180 / Math.PI);
+}
+function radians(angle) {
+	return angle *(Math.PI / 180);
+}
+
+function getDistance(v1, v2) {
+	let x = v1.x - v2.x;
+	let y = v1.y - v2.y;
+	let z = v1.z - v2.z;
+	return Math.sqrt(x * x + y * y + z * z);
+};
+function getAcceleration(distance, starMass) {
+	return G * starMass /(Math.pow(distance, 2));
+};
+function updateVelocity(planet, star) {
+	let vel = new THREE.Vector3();
+	let speed;
+	for(let i = 0; i < STEPS_PER_FRAME; i++) {
+		speed = getAcceleration(getDistance(star.position, planet.position) * METERS_PER_UNIT, star.mass) * SEC_PER_STEP;
+		vel.subVectors(star.position, planet.position).setLength(speed / METERS_PER_UNIT);
+		planet.velocity.add(vel);
+
+		planet.position.x += planet.velocity.x * SEC_PER_STEP;
+		planet.position.y += planet.velocity.y * SEC_PER_STEP;
+		planet.position.z += planet.velocity.z * SEC_PER_STEP;
+	}
+};
+
+let controls,
+renderer,
+scene,
+camera,
+$controls = $('#controls'),
+$planets = $('#planets'),
+rendered = 0,
+pause = true
+
+
+
+
+async function init() {
+	let textures = await $.ajax("textures")
+	textures = textures.trim().split('\n')
+
+	let names = await $.ajax("planets.txt")
+	names = names.split('\n')
+
+
+
+	renderer = new THREE.WebGLRenderer({
+		alpha: true,
+		antialias: true
+	});
+	renderer.setSize(window.innerWidth, window.innerHeight);
+	renderer.setPixelRatio(window.devicePixelRatio);
+	document.body.appendChild(renderer.domElement);
+
+	scene = new THREE.Scene();
+
+	camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 10000);
+	camera.position.set(-200, 100, 200);
+	camera.lookAt(scene.position);
+
+
+
+
+
+	let objects = [];
+
+	let starGeometry, starTexture, starMaterial, star
+
+
+	starGeometry = new THREE.SphereGeometry(20, 32, 32);
+	starTexture = THREE.ImageUtils.loadTexture(`textures/sun.jpg`);
+
+	starMaterial = new THREE.MeshLambertMaterial({
+		map: starTexture,
+		transparent: false,
+		// opacity: 0.5
+	});
+	star = new THREE.Mesh(starGeometry, starMaterial);
+
+	star.radius = 20
+	star.texture = 'sun.jpg'
+	star.orbitRadius = 0
+	star.category = 'G'
+	star.rotSpeed = 0.005 + Math.random() * 0.01;
+	star.rotSpeed *= Math.random() < .10 ? -1 : 1;
+	star.rot = Math.random();
+
+	star.position.set(star.orbitRadius, 0, 0);
+
+	star.name = names[Math.floor(Math.random() * names.length)]
+
+	// star.add(new THREE.AxisHelper(100));
+
+	scene.add(star);
+	objects.push(star);
+
+
+
+
+	let planets = [];
+	let planetGeometry, planetMaterial, planetTexture, planetMesh, planet, orbit
+	for(let i = 2; radii = 0, i < Math.floor(Math.random()*5)+2; i++) {
+		planet = new THREE.Object3D();
+		planet.name = names[Math.floor(Math.random() * names.length)]
+		//array.splice(Math.floor(Math.random()*array.length), 1);
+		planet.texture = textures[Math.floor(Math.random() * textures.length)]
+		planet.category = planet.texture.replace(/\.jpg/, "")
+
+		planet.moon = !!Math.floor(Math.random() * 2)
+		if(planet.moon) {
+			planet.moonOf = planets[i-1] || star
+		}
+
+		planet.radius = Math.floor(Math.random()*5)+2
+		planet.orbitRadius = 25*i + 25
+		// planet.orbitRadius = Math.random() * 50 + 50 + radii;
+		planet.velocity = new THREE.Vector3();
+		planet.rotSpeed = 0.005 + Math.random() * 0.01;
+		planet.rotSpeed *= Math.random() < .10// ? -1 : 1;
+		planet.rot = Math.random();
+		planet.orbitSpeed =(0.02 - i * 0.0048) * 1;
+		// planet.orbit = Math.random() * Math.PI * 2;
+		// planet.orbit = i % 2 === 0 ? 0 : Math.PI * 2
+		planet.orbit = Math.PI / 2
+		planet.inclination = Math.random() * 20 - 10
+
+		radii = planet.orbitRadius + planet.radius;
+
+		planetGeometry = new THREE.SphereGeometry(planet.radius, 128, 128)
+		planetTexture = THREE.ImageUtils.loadTexture("textures/"+planet.texture);
+
+		planetMaterial = new THREE.MeshLambertMaterial({
+			map: planetTexture
+		})
+		planetMesh = new THREE.Mesh(planetGeometry, planetMaterial);
+
+		planet.add(planetMesh);
+		planet.position.set(0, 0, planet.orbitRadius);
+		planets.push(planet);
+		objects.push(planet);
+
+
+		scene.add(planet);
+
+		orbitTrail = new THREE.Line(
+		                            new THREE.CircleGeometry(planet.orbitRadius, 90),
+		                            new THREE.MeshBasicMaterial({
+		                            	color: 0xffffff,
+		                            	transparent: true,
+		                            	opacity: .05,
+		                            	side: THREE.BackSide
+		                            })
+		                            );
+		orbitTrail.geometry.vertices.shift();
+		orbitTrail.rotation.x = THREE.Math.degToRad(90);
+		orbitTrail.rotation.y = THREE.Math.degToRad(planet.inclination);
+		planet.orbitTrail = orbitTrail
+		planet.moons = []
+		scene.add(orbitTrail);
+	}
+	let moon, moonGeometry, moonTexture, moonMesh
+	for(let p in planets) {
+		for(let j = 2; j <= Math.floor(Math.random()*3)+2; j++) {
+			let moon = new THREE.Object3D();
+			moon.name = names[Math.floor(Math.random() * names.length)]
+			moon.texture = textures[Math.floor(Math.random() * textures.length)]
+			moon.category = moon.texture.replace(/\.jpg/, "")
+
+			moon.radius = 1
+			moon.orbitRadius = 4/*2*planets[p].radius*/*j
+			moon.velocity = new THREE.Vector3();
+			moon.orbitSpeed =(0.02 - j * 0.0048) * Math.random() + 25;
+			// moon.orbitSpeed =(0.02 - i * 0.0048) * 1;
+
+			moon.orbit = Math.PI / 2
+			moon.inclination = Math.random() * 20 - 10
+
+
+			moon.rotSpeed = 0.005 + Math.random() * 0.01;
+			moon.rotSpeed *= Math.random() < .10// ? -1 : 1;
+			moon.rot = Math.random();
+
+			moonGeometry = new THREE.SphereGeometry(moon.radius, 128, 128)
+			moonTexture = THREE.ImageUtils.loadTexture("textures/"+moon.texture);
+
+			moonMaterial = new THREE.MeshLambertMaterial({
+				map: moonTexture
+			})
+			moonMesh = new THREE.Mesh(moonGeometry, moonMaterial);
+
+			moon.add(moonMesh);
+			moon.position.set(planets[p].position.x, planets[p].position.y, planets[p].position.z);
+			scene.add(moon)
+
+
+			orbitTrail = new THREE.Line(
+				new THREE.CircleGeometry(moon.orbitRadius, 90),
+				new THREE.MeshBasicMaterial({
+					color: 0xffffff,
+					transparent: true,
+					opacity: .05,
+					side: THREE.BackSide
+				})
+			);
+			orbitTrail.geometry.vertices.shift();
+			orbitTrail.position.set(planets[p].position.x, planets[p].position.y, planets[p].position.z)
+			orbitTrail.rotation.x = THREE.Math.degToRad(90);
+			orbitTrail.rotation.y = THREE.Math.degToRad(moon.inclination);
+
+			moon.orbitTrail = orbitTrail
+			scene.add(orbitTrail)
+
+			planets[p].moons.push(moon)
+			objects.push(moon);
+
+		}
+
+	}
+
+	let point = new THREE.PointLight(0xFFFFFF, 1, 0, 2);
+	point.position.set(0, 0, 0);
+	scene.add(point);
+
+	let ambient = new THREE.AmbientLight(0xFFFFFF);
+	scene.add(ambient);
+
+
+	let dec = 1
+
+
+	controls = new THREE.OrbitControls(camera, renderer.domElement);
+	controls.enableContextMenu = false;
+	controls.enableKeys = true;
+
+
+	controls.minPolarAngle = 0
+	controls.maxPolarAngle = radians(90)
+	// controls.minAzimuthAngle = radians(-45)
+	// controls.maxAzimuthAngle = radians(45)
+
+
+	function animate() {
+
+		renderer.render(scene, camera);
+
+		$('#phi').text(degrees((controls.getPolarAngle())).toFixed(dec))
+		$('#theta').text(degrees((controls.getAzimuthalAngle())).toFixed(dec))
+		$('#controlsPositionX').text(controls.object.position.x.toFixed(dec).padStart(4, "0"))
+		$('#controlsPositionY').text(controls.object.position.y.toFixed(dec).padStart(4, "0"))
+		$('#controlsPositionZ').text(controls.object.position.z.toFixed(dec).padStart(4, "0"))
+		$('#controlsRotationX').text(controls.object.rotation.x.toFixed(dec).padStart(4, "0"))
+		$('#controlsRotationY').text(controls.object.rotation.y.toFixed(dec).padStart(4, "0"))
+		$('#controlsRotationZ').text(controls.object.rotation.z.toFixed(dec).padStart(4, "0"))
+
+		$('#cameraPositionX').text(camera.position.x.toFixed(dec).padStart(4, "0"))
+		$('#cameraPositionY').text(camera.position.y.toFixed(dec).padStart(4, "0"))
+		$('#cameraPositionZ').text(camera.position.z.toFixed(dec).padStart(4, "0"))
+		$('#cameraRotationX').text(camera.rotation.x.toFixed(dec).padStart(4, "0"))
+		$('#cameraRotationY').text(camera.rotation.y.toFixed(dec).padStart(4, "0"))
+		$('#cameraRotationZ').text(camera.rotation.z.toFixed(dec).padStart(4, "0"))
+
+		if(!pause) {
+			star.rot -= star.rotSpeed
+			star.rotation.set(0, star.rot, 0);
+		}
+
+
+		$planets.empty()
+
+		$planets.append(`<tr>
+		                <td>name</td>
+		                <td>radius</td>
+		                <td>category</td>
+		                <td>cos(orbit)</td>
+		                <td>sin(orbit)</td>
+		                <td>orbit radius</td>
+		                <td>orbit speed</td>
+		                <td>pos(x)</td>
+		                <td>pos(y)</td>
+		                <td>pos(z)</td>
+		                <td>pos(r)</td>
+		                <td>pos(t)</td>
+		                </tr>`)
+
+		for(let p in planets) {
+			let planet = planets[p], x, y, z, px, py, pz
+			let moons = planets[p].moons
+
+			if(!pause) {
+				planet.rot -= planet.rotSpeed
+				planet.orbit += planet.orbitSpeed;
+				// planet.orbit %= 180
+
+				for(let m in moons) {
+					let moon = moons[m]
+					moon.rot += moon.rotSpeed
+					moon.orbit += moon.orbitSpeed;
+					// moon.orbit %= 180
+				}
+
+			}
+
+			planet.rotation.set(0, planet.rot, 0);
+			x = Math.cos(planet.orbit) * planet.orbitRadius,
+			y = Math.cos(planet.orbit) * planet.inclination,
+			z = Math.sin(planet.orbit) * planet.orbitRadius
+			planet.position.set(x, y, z);
+			planet.position.r = Math.sqrt(x*x + z*z)
+			planet.position.t = degrees(Math.atan(z / x))
+
+
+
+			$planets.append(`<tr>
+			                <td>${planet.name}</td>
+			                <td class='number'>${planet.radius}</td>
+			                <td>${planet.category}</td>
+			                <td class='number'>${Math.cos(planet.orbit).toFixed(dec)}</td>
+			                <td class='number'>${Math.sin(planet.orbit).toFixed(dec)}</td>
+			                <td class='number'>${planet.orbitRadius.toFixed(dec)}</td>
+			                <td class='number'>${planet.orbitSpeed.toFixed(dec)}</td>
+			                <td class='number'>${planet.position.x.toFixed(dec)}</td>
+			                <td class='number'>${planet.position.y.toFixed(dec)}</td>
+			                <td class='number'>${planet.position.z.toFixed(dec)}</td>
+			                <td class='number'>${planet.position.r.toFixed(dec)}</td>
+			                <td class='number'>${planet.position.t.toFixed(dec)}</td>
+			                </tr>`)
+			for(let m in moons) {
+				let moon = moons[m]
+
+
+				moon.orbitTrail.position.set(planet.position.x, planet.position.y, planet.position.z);
+				// if(!pause) console.log(moon.orbitTrail)
+
+				x = planet.position.x + (Math.cos(moon.orbit)) * (moon.orbitRadius),
+				y = 0//planet.position.y + (Math.cos(moon.orbit)) * (moon.inclination),
+				z = planet.position.z + (Math.sin(moon.orbit)) * (moon.orbitRadius)
+
+
+				moon.position.set(x, y, z);
+				moon.position.r = Math.sqrt(x*x + z*z)
+				moon.position.t = degrees(Math.atan(z / x))
+
+				$planets.append(`<tr>
+				                <td>${moon.name}</td>
+				                <td class='number'>${moon.radius}</td>
+				                <td>${moon.category}</td>
+				                <td class='number'>${Math.cos(moon.orbit).toFixed(dec)}</td>
+				                <td class='number'>${Math.sin(moon.orbit).toFixed(dec)}</td>
+				                <td class='number'>${moon.orbitRadius.toFixed(dec)}</td>
+				                <td class='number'>${moon.orbitSpeed.toFixed(dec)}</td>
+				                <td class='number'>${moon.position.x.toFixed(dec)}</td>
+				                <td class='number'>${moon.position.y.toFixed(dec)}</td>
+				                <td class='number'>${moon.position.z.toFixed(dec)}</td>
+				                <td class='number'>${moon.position.r.toFixed(dec)}</td>
+				                <td class='number'>${moon.position.t.toFixed(dec)}</td>
+				                </tr>`)
+			}
+		}
+		TWEEN.update();
+		requestAnimationFrame(animate);
+	}
+	animate();
+
+	$controls.draggable().resizable({handles: "se"})
+	$controls.height($controls.height()+($('tr').height()*(objects.length+1)))
+	$controls.width($planets.width()*1.01)
+
+
+	$('#pause').click(function() {
+		pause = !pause
+		if(pause) {
+			$(this).text('Play')
+		}
+		else {
+			$(this).text('Pause')
+		}
+	})
+	function setupTween(position, target, duration) {
+		TWEEN.removeAll();
+		new TWEEN.Tween(position)
+			.to(target, duration)
+			.easing(TWEEN.Easing.Bounce.InOut)
+			.onUpdate(function() {camera.position.copy(position)})
+			.start();
+	}
+	$('#front').click(function() {
+		controls.object.position.x = 0
+		controls.object.position.y = 0
+		controls.object.position.z = 250
+		controls.update()
+		// setupTween(camera.position.clone(), new THREE.Vector3(0, 0, 250), 5000);
+	})
+	$('#top').click(function() {
+		controls.object.position.x = 0
+		controls.object.position.y = 250
+		controls.object.position.z = 0
+		controls.update()
+		// setupTween(camera.position.clone(), new THREE.Vector3(0, 250, 0), 5000);
+	})
+	$('#reset').click(function() {
+		camera.position.set(200, 200, 200);
+		camera.lookAt(scene.position);
+		controls.reset()
+	})
+	$('#try').click(function() {
+		planets[0].position.x = -planets[0].position.x
+		planets[0].position.z = planets[0].position.z
+		// console.log("r", Math.sqrt(planets[0].position.x*planets[0].position.x + planets[0].position.z*planets[0].position.z))
+		// console.log("θ", Math.atan(planets[0].position.z / planets[0].position.x))
+		animate()
+	})
+	// camera.position.set(100, 100, 200);
+	// camera.lookAt(scene.position);
+};
+window.onload = init
+</script>
+</body>
+</html>

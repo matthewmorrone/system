@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<!-- saved from url=(0028)http://justfound.co/gravity/ -->
+<html>
+	<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+	<title>Gravity</title>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-alpha1/jquery.min.js"></script>
+
+	<script>
+		function Vector(x, y) {
+			this.x = x;
+			this.y = y;
+		}
+
+		function Color() {
+			this.red = Math.floor(Math.random() * 255);
+			this.green = Math.floor(Math.random() * 255);
+			this.blue = Math.floor(Math.random() * 255);
+			this.toString = rgbtostr;
+		}
+
+		function rgbtostr() {
+			return "rgb(" + this.red + ", " + this.green + ", " + this.blue + ")";
+		}
+
+	</script>
+	<script>
+		function Particle(m, v, x, y) {
+			this.mass = m;
+			this.velocity = v;
+			this.x = x;
+			this.y = y;
+			this.color = new Color();
+			this.absorb = absorbParticle;
+			this.paint = paintParticle;
+			this.radius = Math.cbrt(this.mass);
+		}
+
+		function getRadius() {
+			return Math.sqrt(this.mass) / 2;
+		}
+
+		function absorbParticle(p) {
+			if (this.mass < p.mass) {
+				this.color = p.color;
+			}
+			this.velocity.x = (this.velocity.x * this.mass + p.velocity.x * p.mass) / (this.mass + p.mass);
+			this.velocity.y = (this.velocity.y * this.mass + p.velocity.y * p.mass) / (this.mass + p.mass);
+			this.x = (this.x * this.mass + p.x * p.mass) / (this.mass + p.mass);
+			this.y = (this.y * this.mass + p.y * p.mass) / (this.mass + p.mass);
+			this.mass += p.mass;
+			this.radius = Math.cbrt(this.mass);
+		}
+
+		function paintParticle() {
+			var ctx = $("#canvas")[0].getContext("2d");
+			ctx.beginPath();
+			ctx.arc(this.x * zoomScale + xOffset, this.y * zoomScale + yOffset, this.radius * zoomScale, 0, 2 * Math.PI, false);
+			ctx.fillStyle = this.color.toString();
+			ctx.fill();
+		}
+
+		function paintParticles(p) {
+			for (var i = 0; i < p.length; i++) {
+				p[i].paint();
+			}
+		}
+
+		function gravityCalc(p) {
+			for (var i = 0; i < p.length; i++) {
+				forceSum = new Vector(0, 0);
+				for (var j = 0; j < p.length; j++) {
+					if (j != i) {
+						var xDist = p[i].x - p[j].x;
+						var yDist = p[i].y - p[j].y;
+						var distance = Math.sqrt(Math.pow(xDist, 2) + Math.pow(yDist, 2));
+						if (distance < p[i].radius + p[j].radius) {
+							p[i].absorb(p[j]);
+							p.splice(j, 1);
+						} else {
+							var forceMag = gravityConstant * (p[i].mass * p[j].mass) / Math.pow(distance, 2);
+							var nextStep = forceMag / p[i].mass + forceMag / p[j].mass;
+							if (distance < nextStep) {
+							  p[i].absorb(p[j]);
+							  p.splice(j, 1);
+							} else {
+		  					forceSum.x -= Math.abs(forceMag * (xDist / distance)) * Math.sign(xDist);
+		  					forceSum.y -= Math.abs(forceMag * (yDist / distance)) * Math.sign(yDist);
+							}
+						}
+					}
+				}
+				p[i].velocity.x += forceSum.x / p[i].mass;
+				p[i].velocity.y += forceSum.y / p[i].mass;
+			}
+			for (var i = 0; i < p.length; i++) {
+				// 60 / fps to take bigger steps when the simulation is running slower (60 is normal fps)
+				p[i].x += p[i].velocity.x / 10 * (60 / fps);
+				p[i].y += p[i].velocity.y / 10 * (60 / fps);
+			}
+		}
+	</script>
+	<script>
+		var steps = 0;
+		var startTime;
+		var endTime;
+		var fps;
+		var particles = new Array();
+		var mass = 16;
+		var gravityConstant = 1;
+		var xOffset = 0;
+		var yOffset = 0;
+		var initOffset = 0;
+		var initYOffset = 0;
+		var zoomScale = 1;
+		var mouseInitX = 0;
+		var mouseInitY = 0;
+		var currentMouseX = 0;
+		var currentMouseY = 0;
+		var dragging = false;
+		var panning = false;
+		var shiftPressed = false;
+		var tracking = false;
+		var running = true;
+		var ctx;
+
+		function newParticle(m, v, x, y) {
+			var p = new Particle(m, v, x, y);
+			particles[particles.length] = p;
+		}
+
+		function cloud(centerX, centerY) {
+			for (var i = 0; i < 1000; i++) {
+				var angle = Math.random() * 2 * Math.PI;
+				var dist = Math.pow(Math.random() * 15, 2);
+				var x = centerX + dist * Math.cos(angle);
+				var y = centerY + dist * Math.sin(angle);
+				var vx = dist * Math.sin(angle) / 50;
+				var vy = -dist * Math.cos(angle) / 50;
+				newParticle(2, new Vector(vx, vy), x, y);
+			}
+			paintParticles(particles);
+		}
+
+		function randDist() {
+			xMax = $(window).width();
+			yMax = $(window).height();
+			for (var i = 0; i < 1000; i++) {
+				var x = (Math.random() * xMax - xOffset) / zoomScale;
+				var y = (Math.random() * yMax - yOffset) / zoomScale;
+				var vx = Math.random() * 10 - 5;
+				var vy = Math.random() * 10 - 5;
+				newParticle(2, new Vector(vx, vy), x, y);
+			}
+			paintParticles(particles);
+		}
+
+		function center(p) {
+			var x = 0;
+			var y = 0;
+			var maxMass = 0;
+			for (var i = 0; i < p.length; i ++) {
+				if (p[i].mass > maxMass) {
+					x = p[i].x * zoomScale;
+					y = p[i].y * zoomScale;
+					maxMass = p[i].mass;
+				}
+			}
+			xOffset = $(window).width() / 2 - x;
+			yOffset = $(window).height() / 2 - y;
+		}
+
+		function clean(p) {
+			for (var i = 0; i < p.length; i ++) {
+				var x = p[i].x * zoomScale + xOffset;
+				var y = p[i].y * zoomScale + yOffset;
+				if (x < 0 || x > $(window).width() || y < 0 || y > $(window).height()) {
+					p.splice(i, 1);
+				}
+			}
+		}
+
+		$(document).ready(function (e) {
+			xOffset = $(window).width() / 2;
+			yOffset = $(window).height() / 2;
+			mouseInitX = e.clientX;
+			mouseInitY = e.clientY;
+			ctx = $("#canvas")[0].getContext("2d");
+			ctx.canvas.width = window.innerWidth;
+			ctx.canvas.height = window.innerHeight;
+
+			$("#canvas").mousedown(function (e) {
+				mouseInitX = e.clientX;
+				mouseInitY = e.clientY;
+				dragging = true;
+				if (e.which == 2 || shiftPressed) {
+					e.preventDefault();
+					panning = true;
+					initXOffset = xOffset;
+					initYOffset = yOffset;
+				}
+			});
+
+			$("#canvas").mouseup(function (e) {
+				if (!panning) {
+					var vx = (e.clientX - mouseInitX) / 10;
+					var vy = (e.clientY - mouseInitY) / 10;
+					newParticle(mass, new Vector(vx, vy), (mouseInitX - xOffset) / zoomScale, (mouseInitY - yOffset) / zoomScale);
+					paintParticles(particles);
+				}
+				panning = false;
+				dragging = false;
+			});
+
+			$("#canvas").mousemove(function (e) {
+				currentMouseX = e.clientX;
+				currentMouseY = e.clientY;
+				if (panning) {
+					xOffset = initXOffset + (currentMouseX - mouseInitX);
+					yOffset = initYOffset + (currentMouseY - mouseInitY);
+				}
+			});
+
+			$(window).bind('mousewheel', function (e) {
+				if (e.originalEvent.wheelDelta / 120 > 0) {
+					if (shiftPressed) {
+						zoomScale *= 1.2;
+					} else {
+						mass *= 2;
+					}
+				} else {
+					if (shiftPressed) {
+						zoomScale /= 1.2;
+					} else {
+						mass /= 2;
+					}
+				}
+				if (mass > 32768) { mass = 32768; }
+				if (mass < 2) { mass = 2; }
+				$("#mass-marker").html("Mass: " + mass);
+			});
+
+			$("body").keydown(function(e) {
+				if (e.which == 16) {
+					shiftPressed = true;
+				}
+			});
+
+			$("body").keyup(function (e) {
+				if (e.which == 72) {
+					$("#instructions").toggle();
+				} else if (e.which == 16) {
+					shiftPressed = false;
+				} else if (e.which == 32) {
+					cloud(currentMouseX - xOffset, currentMouseY - yOffset);
+				} else if (e.which == 67) {
+					tracking = !tracking;
+				} else if (e.which == 68) {
+					clean(particles);
+				} else if (e.which == 80) {
+					running = !running;
+				} else if (e.which == 75) {
+					randDist();
+				} else if (e.which == 81) {
+					gravityConstant *= 1.2;
+				} else if (e.which == 65) {
+					gravityConstant /= 1.2;
+				} else if (e.which == 38) {
+					mass *= 2;
+					if (mass > 32768) { mass = 32768; }
+				} else if (e.which == 40) {
+					mass /= 2;
+					if (mass < 2) { mass = 2; }
+				}
+				$("#mass-marker").html("Mass: " + mass);
+			});
+
+			var startTime = new Date;
+			t  = setInterval(function() {
+				endTime = new Date;
+				fps = 1000 / (endTime - startTime);
+				startTime = endTime;
+				$("#particle-num").html("Bodies: " + particles.length);
+				//$("#step-counter").html("Steps: " + steps);
+				$("#fps").html("FPS: " + fps.toFixed(2));
+				$("#gravity-const").html("Gravity Constant: " + gravityConstant.toFixed(2));
+				$("#tracking").html("Tracking: " + (tracking ? "ON" : "OFF"));
+				ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+				paintParticles(particles);
+				if (dragging && !panning) {
+					ctx.beginPath();
+					ctx.moveTo(mouseInitX, mouseInitY);
+					ctx.lineTo(currentMouseX, currentMouseY);
+					ctx.strokeStyle = "white";
+					ctx.stroke();
+				}
+				if (running) {
+					gravityCalc(particles);
+					steps ++;
+				}
+				if (tracking) {
+					center(particles);
+				}
+			}, 15);
+		});
+
+	</script>
+	<style>
+	body {
+		background: black;
+		color: white;
+		height: 100%;
+		margin: 0;
+	}
+	#canvas {
+		width: 100%;
+		height: 100%;
+		overflow: hidden;
+		position: absolute;
+		top: 0;
+		left: 0;
+	}
+	#info {
+		position: absolute;
+		bottom: 10px;
+		left: 10px;
+	}
+	#steps {
+		position: absolute;
+		bottom: 10px;
+		right: 10px;
+	}
+	#instructions {
+		position: absolute;
+		top: 10px;
+		left: 10px;
+		display: none;
+	}
+	p {
+		margin: 2px;
+		-webkit-touch-callout: none;
+		-webkit-user-select: none;
+		-khtml-user-select: none;
+		-moz-user-select: none;
+		-ms-user-select: none;
+		user-select: none;
+	}
+</style>
+<style></style></head>
+<body>
+	<canvas id="canvas" width="1680" height="919"></canvas>
+	<div id="info">
+		<p id="particle-num">Bodies: 4</p>
+		<p id="gravity-const">Gravity Constant: 1.00</p>
+		<p id="tracking">Tracking: ON</p>
+		<p id="mass-marker">Mass: 32768</p>
+		<p id="help">Press H for instructions.</p>
+	</div>
+	<p id="instructions">
+		Click to place a body. <br>
+		Scroll or use arrow keys to change mass. <br>
+		Drag to give it a velocity vector. <br>
+		Press space to create a cloud.<br>
+		Press K to fill the screen.<br>
+		Middle-click or shift-click and drag to move the viewport.<br>
+		Shift-scroll to zoom.<br>
+		Press C to track the most massive object.<br>
+		Press D to delete all bodies not on the screen.<br>
+		Press Q/A to increase/decrease the gravity constant.<br>
+		Press P to pause/unpause.
+	</p>
+	<div id="steps">
+		<!-- <p id="step-counter">Steps: 0</p> -->
+		<p id="fps">FPS: 66.67</p>
+	</div>
+
+
+
+</body></html>

@@ -1,0 +1,201 @@
+<html>
+<head>
+<title>Solar System</title>
+
+
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<link rel="shortcut icon" type="image/x-icon" href="http://www.matthewmorrone.com/psi.ico" />
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-alpha1/jquery.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.11.4/jquery-ui.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery-color/2.1.2/jquery.color.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/3.10.1/lodash.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.0.0-alpha/css/bootstrap.min.css" />
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.0/css/font-awesome.min.css" />
+<link rel="stylesheet" href="https://code.jquery.com/ui/jquery-ui-git.css" />
+<style>
+* {
+	margin: 0px;
+	padding: 0px;
+}
+body {
+	width: 100%;
+	height: 100%;
+}
+table, th, td {
+	border: 1px solid black;
+	border-collapse: collapse;
+}
+</style>
+</head>
+<body>
+<!-- 	<div class="dg ac">
+	    <div class="dg main a" style="width: 245px;">
+	        <div style="width: 6px; margin-left: -3px; height: 135px; cursor: ew-resize; position: absolute;"></div>
+	        <ul style="height: auto;">
+	            <li class="cr number">
+	                <div><span class="property-name">fov</span>
+	                    <div class="c">
+	                        <input type="text">
+	                    </div>
+	                </div>
+	            </li>
+	            <li class="cr number">
+	                <div><span class="property-name">aspect</span>
+	                    <div class="c">
+	                        <input type="text">
+	                    </div>
+	                </div>
+	            </li>
+	            <li class="cr number">
+	                <div><span class="property-name">near</span>
+	                    <div class="c">
+	                        <input type="text">
+	                    </div>
+	                </div>
+	            </li>
+	            <li class="cr number">
+	                <div><span class="property-name">far</span>
+	                    <div class="c">
+	                        <input type="text">
+	                    </div>
+	                </div>
+	            </li>
+	            <li class="cr number">
+	                <div><span class="property-name">backgroundColor</span>
+	                    <div class="c">
+	                        <input type="text">
+	                    </div>
+	                </div>
+	            </li>
+	        </ul>
+	        <div class="close-button" style="width: 245px;">Close Controls</div>
+	    </div>
+	</div> -->
+
+
+
+
+
+
+	<script src="three.min.js"></script>
+	<script src="three.orbit.js"></script>
+	<script src="dat.gui.min.js"></script>
+
+	<script>
+	var SolarSystem = function() {
+		this.pause = false
+		this.controls
+		this.renderer
+		this.scene
+		this.camera
+		this.width = window.innerWidth
+		this.height = window.innerHeight
+		this.backgroundColor = 0x000000
+		this.pointLightColor = 0xFFFFFF
+		this.ambientLightColor = 0xEEEEEE
+
+		this.fov = 45
+		this.aspect = this.width/this.height
+		this.near = 0.1
+		this.far = 10000
+
+		this.cameraPosition = {
+			x: -200,
+			y: 100,
+			z: 200
+		}
+
+		this.renderer = new THREE.WebGLRenderer({
+			alpha: true,
+			antialias: true
+		});
+		this.renderer.setSize(this.width, this.height);
+		this.renderer.setPixelRatio(window.devicePixelRatio);
+
+		document.body.appendChild(this.renderer.domElement);
+
+		this.renderer.setClearColor(this.backgroundColor, 1);
+
+		this.scene = new THREE.Scene();
+
+		this.camera = new THREE.PerspectiveCamera(this.fov, this.aspect, this.near, this.far);
+		this.camera.position.set(this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z);
+		this.camera.lookAt(this.scene.position);
+
+		this.pointLight = new THREE.PointLight(this.pointLightColor, 1, 0, 2);
+		this.pointLight.position.set(0, 0, 0);
+		this.scene.add(this.pointLight);
+
+		this.ambient = new THREE.AmbientLight(this.ambientLightColor);
+		this.scene.add(this.ambient);
+
+		this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+		this.controls.enableContextMenu = false;
+		this.controls.enableKeys = true;
+
+		this.star = {}
+		this.star.image = 'sunmap.jpg'
+
+		this.star.radius = 30
+		this.star.orbit = {}
+		this.star.orbit.radius = 0
+		this.star.orbit.angle = Math.PI
+		this.star.orbit.speed = .1
+		this.star.orbit.inclination = 0
+
+		this.star.spin = {}
+		this.star.spin.speed = 0.005 + .5 * 0.01;
+		this.star.spin.degree = 1
+		this.star.spin.direction = 1
+		this.star.spin.inclination = 0
+
+
+		this.star.geometry = new THREE.SphereGeometry(this.star.radius, 32, 32);
+		this.star.texture = THREE.ImageUtils.loadTexture(`textures/${this.star.image}`);
+
+		this.star.material = new THREE.MeshPhongMaterial({
+			map: this.star.texture,
+			bumpMap	: this.star.texture,
+			bumpScale: 0.05,
+			transparent: true,
+			opacity: 1
+		});
+		this.star.mesh = new THREE.Mesh(this.star.geometry, this.star.material);
+		// this.star.axis = new THREE.AxisHelper(100)
+		// this.star.mesh.add(this.star.axis);
+		this.star.mesh.position.set(this.star.orbit.radius, 0, 0);
+		this.star.mesh.rotation.set(Math.PI/2, 0, THREE.Math.degToRad(this.star.spin.inclination));
+		this.scene.add(this.star.mesh)
+
+		return this
+	}
+	// window.onload =
+	var solarSystem = SolarSystem()
+	var gui = new dat.GUI();
+	gui.addColor(solarSystem, 'backgroundColor').listen();
+
+
+
+	var animate = function() {
+		solarSystem.renderer.render(solarSystem.scene, solarSystem.camera);
+		requestAnimationFrame(animate);
+	}
+
+	solarSystem.renderer.render(solarSystem.scene, solarSystem.camera);
+	animate();
+
+
+
+
+	var update = function() {
+		requestAnimationFrame(update);
+		// solarSystem.noiseStrength = Math.random();
+	};
+
+	update();
+
+
+	</script>
+</body>
+</html>
