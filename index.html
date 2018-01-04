@@ -201,6 +201,29 @@ async function init() {
 		}]
 	}
 
+
+
+	let skyGeometry = new THREE.BoxGeometry(10000, 10000, 10000);
+	let skyChoice = Math.floor(Math.random() * 5) + 1
+	let skyTextureCube = THREE.ImageUtils.loadTextureCube([
+		// "starfield-1.png", "starfield-2.png", "starfield-1.png",
+		// "starfield-2.png", "starfield-1.png", "starfield-2.png"
+		`skybox/skybox_gen_${skyChoice}-0.png`, `skybox/skybox_gen_${skyChoice}-1.png`, `skybox/skybox_gen_${skyChoice}-2.png`,
+		`skybox/skybox_gen_${skyChoice}-3.png`, `skybox/skybox_gen_${skyChoice}-4.png`, `skybox/skybox_gen_${skyChoice}-5.png`,
+	]);
+	let skyShader = THREE.ShaderLib["cube"];
+	skyShader.uniforms["tCube"].value = skyTextureCube;
+	let skyMaterial = new THREE.ShaderMaterial({
+		fragmentShader: skyShader.fragmentShader,
+		vertexShader: skyShader.vertexShader,
+		uniforms: skyShader.uniforms,
+		depthWrite: false,
+		side: THREE.BackSide
+	});
+	let skyBox = new THREE.Mesh(skyGeometry, skyMaterial);
+	scene.add(skyBox);
+
+
 	let star = {}, planet
 	star.name = solarSystem.stars[0].name
 	star.image = solarSystem.stars[0].image
