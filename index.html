@@ -89,7 +89,7 @@ function randomize(lo, hi) {
 async function init() {
 	let $table = $('#table tbody')
 
-	let images = await $.ajax("textures")
+	let images = await $.ajax("/textures")
 	images = images.trim().split('\n')
 
 	let names = await $.ajax("planets.txt")
@@ -208,8 +208,8 @@ async function init() {
 	let skyTextureCube = THREE.ImageUtils.loadTextureCube([
 		// "starfield-1.png", "starfield-2.png", "starfield-1.png",
 		// "starfield-2.png", "starfield-1.png", "starfield-2.png"
-		`skybox/skybox_gen_${skyChoice}-0.png`, `skybox/skybox_gen_${skyChoice}-1.png`, `skybox/skybox_gen_${skyChoice}-2.png`,
-		`skybox/skybox_gen_${skyChoice}-3.png`, `skybox/skybox_gen_${skyChoice}-4.png`, `skybox/skybox_gen_${skyChoice}-5.png`,
+		`/skybox/skybox_gen_${skyChoice}-0.png`, `/skybox/skybox_gen_${skyChoice}-1.png`, `/skybox/skybox_gen_${skyChoice}-2.png`,
+		`/skybox/skybox_gen_${skyChoice}-3.png`, `/skybox/skybox_gen_${skyChoice}-4.png`, `/skybox/skybox_gen_${skyChoice}-5.png`,
 	]);
 	let skyShader = THREE.ShaderLib["cube"];
 	skyShader.uniforms["tCube"].value = skyTextureCube;
@@ -249,7 +249,7 @@ async function init() {
 
 	// star.category = 'G'
 	star.geometry = new THREE.SphereGeometry(star.radius, 32, 32);
-	star.texture = THREE.ImageUtils.loadTexture(`textures/${star.image}`);
+	star.texture = THREE.ImageUtils.loadTexture(`/textures/${star.image}`);
 
 	star.material = new THREE.MeshPhongMaterial({
 		map: star.texture,
@@ -307,7 +307,7 @@ async function init() {
 
 
 		planet.geometry = new THREE.SphereGeometry(planet.radius, 32, 32);
-		planet.texture = THREE.ImageUtils.loadTexture(`textures/${planet.image}`);
+		planet.texture = THREE.ImageUtils.loadTexture(`/textures/${planet.image}`);
 
 
 		planet.material = new THREE.MeshPhongMaterial({
@@ -396,7 +396,7 @@ async function init() {
 			moon.spin.inclination = randomize(-30, 30)
 
 			moon.geometry = new THREE.SphereGeometry(moon.radius, 32, 32);
-			moon.texture = THREE.ImageUtils.loadTexture(`textures/${moon.image}`);
+			moon.texture = THREE.ImageUtils.loadTexture(`/textures/${moon.image}`);
 
 			moon.material = new THREE.MeshPhongMaterial({
 				map: moon.texture,
